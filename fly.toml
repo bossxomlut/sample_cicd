@@ -16,17 +16,6 @@ primary_region = 'ams'
   min_machines_running = 0
   processes = ['app']
 
-[checks]
-  [checks.hello]
-    type = "http"
-    interval = "10s"
-    timeout = "2s"
-    method = "get"
-    path = "/hello"
-    protocol = "http"
-    grace_period = "5s"
-    restart_limit = 0
-
 [[vm]]
   memory = '1gb'
   cpu_kind = 'shared'
