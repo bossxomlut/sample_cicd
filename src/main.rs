@@ -2,7 +2,7 @@ use actix_web::{get, App, HttpServer, Responder};
 
 #[get("/hello")]
 async fn hello() -> impl Responder {
-    "Hello World 1999 v2"
+    "Hello World 1999 v2\nBuild build Github Action"
 }
 
 #[actix_web::main]
