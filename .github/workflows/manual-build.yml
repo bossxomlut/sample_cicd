@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    environment: production
+    environment: ${{ github.ref_name == 'master' && 'production' || github.ref_name == 'staging' && 'staging' || 'dev' }}
 
     steps:
       - name: Checkout Code
