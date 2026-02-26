@@ -1,54 +1,91 @@
-name: Manual Build
+name: Manual Build & Deploy
 
 on:
   workflow_dispatch:
-    inputs:
-      env:
-        type: choice
-        required: true
-        options:
-          - dev
-          - staging
-          - production
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.env }}
 
     steps:
-      - uses: actions/checkout@v3
+      # =========================
+      # Detect Environment by Branch
+      # =========================
+      - name: Detect environment
+        id: env
+        run: |
+          branch="${GITHUB_REF_NAME}"
+          echo "Branch = $branch"
 
-      - uses: actions-rs/toolchain@v1
+          if [[ "$branch" == "master" || "$branch" == "main" ]]; then
+            echo "env=production" >> $GITHUB_OUTPUT
+          elif [[ "$branch" == "staging" ]]; then
+            echo "env=staging" >> $GITHUB_OUTPUT
+          else
+            echo "env=dev" >> $GITHUB_OUTPUT
+          fi
+
+      # =========================
+      # Checkout source
+      # =========================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # =========================
+      # Setup Rust toolchain
+      # =========================
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
+          override: true
 
-      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      # =========================
+      # Cache cargo build
+      # =========================
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - run: rustup target add x86_64-unknown-linux-musl
+      # =========================
+      # Install musl toolchain
+      # =========================
+      - name: Install musl tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      - name: Build
+      - name: Add musl target
+        run: rustup target add x86_64-unknown-linux-musl
+
+      # =========================
+      # Build binary
+      # =========================
+      - name: Build project
         env:
           CC_x86_64_unknown_linux_musl: musl-gcc
         run: cargo build --target x86_64-unknown-linux-musl --release
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: rust-rest-api
-          path: target/x86_64-unknown-linux-musl/release/rust_rest_api
-
+      # =========================
+      # Install Fly CLI
+      # =========================
       - name: Install Flyctl
         run: curl -L https://fly.io/install.sh | sh
 
-      - run: echo "$HOME/.fly/bin" >> $GITHUB_PATH
+      - name: Add Flyctl to PATH
+        run: echo "$HOME/.fly/bin" >> $GITHUB_PATH
 
-      - name: Write .env
-        run: |
-          cat > .env <<EOF
-          ENVIRONMENT_NAME=${{ vars.ENVIRONMENT_NAME }}
-          EOF
-
-      - name: Deploy
+      # =========================
+      # Deploy
+      # =========================
+      - name: Deploy to Fly
+        environment: ${{ steps.env.outputs.env }}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: flyctl deploy --config fly.toml --remote-only
+          ENVIRONMENT_NAME: ${{ vars.ENVIRONMENT_NAME }}
+        run: |
+          echo "Deploying to environment = $ENVIRONMENT_NAME"
+          flyctl deploy --config fly.toml --remote-only
