@@ -2,50 +2,53 @@ name: Manual Build
 
 on:
   workflow_dispatch:
+    inputs:
+      env:
+        type: choice
+        required: true
+        options:
+          - dev
+          - staging
+          - production
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'master' && 'production' || github.ref_name == 'staging' && 'staging' || 'dev' }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+    environment: ${{ inputs.env }}
 
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
 
-      - name: Install musl-gcc
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      - name: Add musl Rust target
-        run: rustup target add x86_64-unknown-linux-musl
+      - run: rustup target add x86_64-unknown-linux-musl
 
-      - name: Build Project (musl static)
+      - name: Build
         env:
           CC_x86_64_unknown_linux_musl: musl-gcc
         run: cargo build --target x86_64-unknown-linux-musl --release
 
-      - name: Archive build
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: rust-rest-api
           path: target/x86_64-unknown-linux-musl/release/rust_rest_api
-      - name: Install Flyctl
-        run: |
-          curl -L https://fly.io/install.sh | sh
-      - name: Add Flyctl to PATH
-        run: echo "$HOME/.fly/bin" >> $GITHUB_PATH
 
-      - name: Write .env from workflow
+      - name: Install Flyctl
+        run: curl -L https://fly.io/install.sh | sh
+
+      - run: echo "$HOME/.fly/bin" >> $GITHUB_PATH
+
+      - name: Write .env
         run: |
-          cat > .env <<'EOF'
-          ENVIRONMENT_NAME=${{ secrets.ENVIRONMENT_NAME }}
+          cat > .env <<EOF
+          ENVIRONMENT_NAME=${{ vars.ENVIRONMENT_NAME }}
           EOF
 
-      - name: Deploy to Fly.io
+      - name: Deploy
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: |
-          flyctl deploy --config fly.toml --remote-only
+        run: flyctl deploy --config fly.toml --remote-only
